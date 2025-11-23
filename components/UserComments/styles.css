@@ -1,0 +1,7 @@
+
+.comments-grid{display:flex;flex-direction:column;gap:12px}
+.comment-card{display:flex;gap:12px;align-items:flex-start;border:1px solid #ddd;border-radius:10px;padding:10px}
+.comment-thumb{width:64px;height:64px;object-fit:cover;border-radius:6px}
+.comment-body{display:flex;flex-direction:column}
+.comment-text{margin:2px 0 0 0}
+.comment-meta{opacity:.7;font-size:.8rem}
