@@ -2,44 +2,38 @@
  * Loads the Project 2 demo data into MongoDB using Mongoose.
  * Run: node loadDatabase.js (MongoDB must be running locally)
  *
- * Loads into the MongoDB database named 'project2'.
+ * Loads into the MongoDB database named 'project3'.
  * Collections affected: User, Photo, SchemaInfo. Existing data is cleared.
  *
  * Uses Promises for async DB calls.
  */
 
-// We use the Mongoose to define the schema stored in MongoDB.
+// We use Mongoose to define the schema stored in MongoDB.
 // eslint-disable-next-line import/no-extraneous-dependencies
 import mongoose from "mongoose";
 // eslint-disable-next-line import/no-extraneous-dependencies
 import bluebird from "bluebird";
 import models from "./modelData/photoApp.js";
 
-// Load the Mongoose schema for Use and Photo
+// Load the Mongoose schema for User and Photo
 import User from "./schema/user.js";
 import Photo from "./schema/photo.js";
 import SchemaInfo from "./schema/schemaInfo.js";
 
 mongoose.Promise = bluebird;
 mongoose.set("strictQuery", false);
-mongoose.connect("mongodb://127.0.0.1/project3", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+// connect to the project3 database (used by the server)
+mongoose.connect("mongodb://127.0.0.1/project3");
 
 
-// We start by removing anything that existing in the collections.
-const removePromises = [
-  User.deleteMany({}),
-  Photo.deleteMany({}),
-  SchemaInfo.deleteMany({}),
-];
+// Remove any existing documents from the collections first
+const removePromises = [User.deleteMany({}), Photo.deleteMany({}), SchemaInfo.deleteMany({})];
 
 Promise.all(removePromises)
   .then(function () {
-    // Load the users into the User. Mongo assigns ids to objects so we record
-    // the assigned '_id' back into the model.userListModels so we have it
-    // later in the script.
+    // Load the users into the User collection. Mongo assigns ids so we record
+    // the assigned '_id' back into the model.userListModel data so we can
+    // map fake IDs used in modelData to real Mongo IDs for photos/comments.
 
     const userModels = models.userListModel();
     const mapFakeId2RealId = {};
@@ -50,23 +44,14 @@ Promise.all(removePromises)
         location: user.location,
         description: user.description,
         occupation: user.occupation,
-        // Set a simple login_name (lowercased last name) and a weak password for demo
-        login_name: (user.last_name || '').toLowerCase(),
-        password: 'weak',
+        login_name: (user.last_name || "").toLowerCase(),
+        password: "weak",
       })
         .then(function (userObj) {
-          // Set the unique ID of the object. We use the MongoDB generated _id
-          // for now but we keep it distinct from the MongoDB ID so we can go to
-          // something prettier in the future since these show up in URLs, etc.
-          userObj.save();
+          // record mapping from original modelData id -> Mongo _id
           mapFakeId2RealId[user._id] = userObj._id;
           user.objectID = userObj._id;
-          console.log(
-            "Adding user:",
-            user.first_name + " " + user.last_name,
-            " with ID ",
-            user.objectID
-          );
+          console.log("Adding user:", user.first_name + " " + user.last_name, " with ID ", user.objectID);
         })
         .catch(function (err) {
           console.error("Error create user", err);
@@ -74,9 +59,7 @@ Promise.all(removePromises)
     });
 
     const allPromises = Promise.all(userPromises).then(function () {
-      // Once we've loaded all the users into the User collection we add all the
-      // photos. Note that the user_id of the photo is the MongoDB assigned id
-      // in the User object.
+      // After users are created, add photos (and comments) and map user ids.
       const photoModels = [];
       const userIDs = Object.keys(mapFakeId2RealId);
       userIDs.forEach(function (id) {
@@ -84,44 +67,27 @@ Promise.all(removePromises)
       });
 
       const photoPromises = photoModels.map(function (photo) {
-        return Photo.create({
-          file_name: photo.file_name,
-          date_time: photo.date_time,
-          user_id: mapFakeId2RealId[photo.user_id],
-        })
+        return Photo.create({ file_name: photo.file_name, date_time: photo.date_time, user_id: mapFakeId2RealId[photo.user_id] })
           .then(function (photoObj) {
             photo.objectID = photoObj._id;
             if (photo.comments) {
               photo.comments.forEach(function (comment) {
                 photoObj.comments = photoObj.comments.concat([
-                  {
-                    comment: comment.comment,
-                    date_time: comment.date_time,
-                    user_id: comment.user.objectID,
-                  },
+                  { comment: comment.comment, date_time: comment.date_time, user_id: comment.user.objectID },
                 ]);
-                console.log(
-                  "Adding comment of length %d by user %s to photo %s",
-                  comment.comment.length,
-                  comment.user.objectID,
-                  photo.file_name
-                );
+                console.log("Adding comment of length %d by user %s to photo %s", comment.comment.length, comment.user.objectID, photo.file_name);
               });
             }
             photoObj.save();
-            console.log(
-              "Adding photo:",
-              photo.file_name,
-              " of user ID ",
-              photoObj.user_id
-            );
+            console.log("Adding photo:", photo.file_name, " of user ID ", photoObj.user_id);
           })
           .catch(function (err) {
-            console.error("Error create user", err);
+            console.error("Error create photo", err);
           });
       });
+
       return Promise.all(photoPromises).then(function () {
-        // Create a single SchemaInfo document (no version field required)
+        // Create a single SchemaInfo document
         return SchemaInfo.create(models.schemaInfo2())
           .then(function () {
             console.log("SchemaInfo object created");
@@ -137,5 +103,5 @@ Promise.all(removePromises)
     });
   })
   .catch(function (err) {
-    console.error("Error create schemaInfo", err);
+    console.error("Error seeding database", err);
   });
