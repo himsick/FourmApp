@@ -267,6 +267,58 @@ app.get("/counts", (req, res) => {
         res.status(500).json({ error: "Internal server error" });
     }
 });
+
+/**
+ * POST /commentsOfPhoto/:photo_id
+ * Body: { comment: string }
+ * Adds a comment to the in-memory photo model (modelData). This demo server
+ * uses the in-memory models; the session stores model user IDs so we can
+ * attach the corresponding user object to the comment.
+ */
+app.post('/commentsOfPhoto/:photo_id', (req, res) => {
+    const { photo_id } = req.params;
+    const { comment } = req.body || {};
+
+    if (!comment || !String(comment).trim()) {
+        return res.status(400).send('Comment cannot be empty.');
+    }
+
+    if (!req.session || !req.session.user_id) {
+        return res.status(401).send('Unauthorized');
+    }
+
+    try {
+        const users = models.userListModel() || [];
+        let targetPhoto = null;
+        // Find the photo across all users
+        users.forEach((u) => {
+            const photos = models.photoOfUserModel(u._id) || [];
+            photos.forEach((p) => {
+                if (p._id === photo_id) targetPhoto = p;
+            });
+        });
+
+        if (!targetPhoto) {
+            return res.status(400).send('Photo not found.');
+        }
+
+        const author = models.userModel(req.session.user_id);
+        const newComment = {
+            _id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            comment: String(comment).trim(),
+            date_time: new Date().toISOString(),
+            user: author ? { _id: author._id, first_name: author.first_name, last_name: author.last_name } : undefined,
+        };
+
+        if (!targetPhoto.comments) targetPhoto.comments = [];
+        targetPhoto.comments.push(newComment);
+
+        return res.status(200).json(newComment);
+    } catch (err) {
+        console.error('Error adding comment:', err);
+        return res.status(500).send('Internal error');
+    }
+});
 });
 
 // Start server with short keep-alive to prevent lingering sockets
