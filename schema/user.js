@@ -5,11 +5,22 @@ import mongoose from "mongoose";
  * Define the Mongoose Schema for a User.
  */
 const userSchema = new mongoose.Schema({
-  first_name: String,
-  last_name: String,
-  location: String,
-  description: String,
-  occupation: String,
+  first_name: { type: String, required: true },
+  last_name:  { type: String, required: true },
+  location:   { type: String, default: "" },
+  description:{ type: String, default: "" },
+  occupation: { type: String, default: "" },
+
+  // NEW FIELDS for Project 3:
+  login_name: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
 });
 
 /**
