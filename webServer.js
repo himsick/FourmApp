@@ -9,6 +9,8 @@
 import express from "express";
 import session from "express-session";
 import bodyParser from "body-parser";
+import fs from 'fs';
+import multer from 'multer';
 import models from "./modelData/photoApp.js";
 
 const app = express();
@@ -45,6 +47,9 @@ app.use(
         saveUninitialized: false,
     })
 );
+
+// Multer: process single file upload in memory
+const processFormBody = multer({ storage: multer.memoryStorage() }).single('uploadedphoto');
 
 // Helper: check if a user exists
 function userExists(id) {
@@ -318,6 +323,61 @@ app.post('/commentsOfPhoto/:photo_id', (req, res) => {
         console.error('Error adding comment:', err);
         return res.status(500).send('Internal error');
     }
+});
+
+/**
+ * POST /photos/new
+ * Body: form-data with field 'uploadedphoto' (file)
+ * Adds the saved file into ./images and appends a photo to the in-memory modelData
+ */
+app.post('/photos/new', (req, res) => {
+    if (!req.session || !req.session.user_id) {
+        return res.status(401).send('Unauthorized');
+    }
+
+    processFormBody(req, res, (err) => {
+        if (err || !req.file) {
+            console.error('processFormBody error:', err);
+            return res.status(400).send('No file uploaded.');
+        }
+
+        const timestamp = new Date().valueOf();
+        const filename = `U${String(timestamp)}${req.file.originalname}`;
+
+        // Ensure images directory exists
+        try {
+            if (!fs.existsSync('./images')) {
+                fs.mkdirSync('./images');
+            }
+        } catch (mkErr) {
+            console.error('Error ensuring images directory:', mkErr);
+        }
+
+        fs.writeFile(`./images/${filename}`, req.file.buffer, (writeErr) => {
+            if (writeErr) {
+                console.error('Error writing file:', writeErr);
+                return res.status(500).send('Error saving file.');
+            }
+
+            // Create a new photo object compatible with modelData
+            const newPhoto = {
+                _id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                date_time: new Date().toISOString(),
+                file_name: filename,
+                user_id: req.session.user_id,
+            };
+
+            try {
+                if (typeof models.addPhoto === 'function') {
+                    models.addPhoto(newPhoto);
+                }
+                return res.status(200).json(newPhoto);
+            } catch (dbErr) {
+                console.error('Error adding photo to modelData:', dbErr);
+                return res.status(500).send('Error saving photo to server.');
+            }
+        });
+    });
 });
 });
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -11,7 +11,7 @@ import {
 import { useLocation, matchPath } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import './styles.css';
-import { getUser, logout } from '../../lib/api';
+import { getUser, logout, uploadPhoto } from '../../lib/api';
 import { useAppStore } from '../../lib/store';
 
 function TopBar() {
@@ -68,6 +68,31 @@ function TopBar() {
     logoutMutation.mutate();
   };
 
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: uploadPhoto,
+    onSuccess: () => {
+      if (currentUser) {
+        queryClient.invalidateQueries({ queryKey: ['photosOfUser', currentUser._id] });
+      }
+    },
+  });
+
+  const fileInputRef = useRef(null);
+
+  const handleAddPhotoClick = () => {
+    if (fileInputRef.current) fileInputRef.current.click();
+  };
+
+  const handleFileSelected = (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    uploadMutation.mutate(file);
+    // clear input so same file can be selected again
+    event.target.value = '';
+  };
+
   return (
     <AppBar className="topbar-appBar" position="absolute">
       <Toolbar sx={{ display: 'flex', alignItems: 'center' }}>
@@ -76,6 +101,27 @@ function TopBar() {
         </Typography>
 
         <Box sx={{ flexGrow: 1 }} />
+
+        {/* Hidden file input for uploads */}
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          style={{ display: 'none' }}
+          onChange={handleFileSelected}
+        />
+
+        {currentUser && (
+          <Button
+            color="inherit"
+            size="small"
+            onClick={handleAddPhotoClick}
+            disabled={uploadMutation.isLoading}
+            sx={{ mr: 1 }}
+          >
+            {uploadMutation.isLoading ? 'Uploading…' : 'Add Photo'}
+          </Button>
+        )}
 
         <Box sx={{ mr: 3, textAlign: 'right' }}>
           {currentUser ? (

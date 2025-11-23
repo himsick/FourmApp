@@ -387,4 +387,12 @@ const models = {
   schemaInfo2: schemaModel2,
 };
 
+// Allow adding photos to the in-memory photos array so server routes
+// (which operate on modelData) can persist uploaded photos during runtime.
+function addPhoto(photo) {
+  photos.push(photo);
+}
+
+models.addPhoto = addPhoto;
+
 export default models;
