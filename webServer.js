@@ -8,7 +8,8 @@
 
 import express from "express";
 import session from "express-session";
-import bodyParser from "body-parser";
+import mongoose from 'mongoose';
+import User from './schema/user.js';
 import fs from 'fs';
 import multer from 'multer';
 import models from "./modelData/photoApp.js";
@@ -16,8 +17,12 @@ import models from "./modelData/photoApp.js";
 const app = express();
 const portno = 3001;
 
+// Connect to MongoDB (Project 3 DB)
+mongoose.set('strictQuery', false);
+mongoose.connect("mongodb://127.0.0.1/project3");
+
 // Parse JSON bodies
-app.use(bodyParser.json());
+app.use(express.json());
 
 // Simple logging
 app.use((req, _res, next) => {
@@ -61,7 +66,7 @@ function userExists(id) {
 }
 
 // Paths that don't require login
-const publicPaths = new Set(["/admin/login", "/admin/logout"]);
+const publicPaths = new Set(["/admin/login", "/admin/logout", "/user"]);
 
 // Guard: reject all other requests if not logged in
 app.use((req, res, next) => {
@@ -72,22 +77,22 @@ app.use((req, res, next) => {
     return next();
 });
 
-// Admin: login
-app.post('/admin/login', (req, res) => {
-    const { login_name } = req.body;
-    if (!login_name) return res.status(400).send('Missing login_name');
-
-    // In this demo server we use the in-memory models: match against last_name lowercased
+// Admin: login (checks password against MongoDB User model)
+app.post('/admin/login', async (req, res) => {
     try {
-        const users = models.userListModel() || [];
-        const found = users.find(u => (u.last_name || '').toLowerCase() === String(login_name).toLowerCase());
-        if (!found) return res.status(400).send('Invalid login_name');
+        const { login_name, password } = req.body || {};
+        if (!login_name || !password) {
+            return res.status(400).send('login_name and password are required.');
+        }
 
-        // store minimal session info
-        req.session.user_id = found._id;
-        req.session.login_name = (found.last_name || '').toLowerCase();
+        const user = await User.findOne({ login_name }).exec();
+        if (!user || user.password !== password) {
+            return res.status(400).send('Invalid login_name or password.');
+        }
 
-        return res.status(200).json({ _id: found._id, first_name: found.first_name, last_name: found.last_name, login_name: (found.last_name || '').toLowerCase() });
+        req.session.user_id = user._id;
+
+        return res.status(200).json({ _id: user._id, login_name: user.login_name, first_name: user.first_name, last_name: user.last_name });
     } catch (err) {
         console.error('Login error:', err);
         return res.status(500).send('Internal server error');
@@ -157,6 +162,49 @@ app.get("/user/:id", (req, res) => {
             "Connection": "close",
         });
         res.end(body);
+    }
+});
+
+/**
+ * POST /user
+ * Register a new user.
+ */
+app.post('/user', async (req, res) => {
+    try {
+        const {
+            login_name,
+            password,
+            first_name,
+            last_name,
+            location,
+            description,
+            occupation,
+        } = req.body || {};
+
+        if (!login_name || !login_name.trim()) return res.status(400).send('login_name is required.');
+        if (!first_name || !first_name.trim()) return res.status(400).send('first_name is required.');
+        if (!last_name || !last_name.trim()) return res.status(400).send('last_name is required.');
+        if (!password || !password.trim()) return res.status(400).send('password is required.');
+
+        const existing = await User.findOne({ login_name }).exec();
+        if (existing) return res.status(400).send('That login_name already exists.');
+
+        const user = new User({
+            login_name,
+            password,
+            first_name,
+            last_name,
+            location: location || '',
+            description: description || '',
+            occupation: occupation || '',
+        });
+
+        const saved = await user.save();
+
+        return res.status(200).json({ _id: saved._id, login_name: saved.login_name, first_name: saved.first_name, last_name: saved.last_name });
+    } catch (err) {
+        console.error('Error in POST /user:', err);
+        return res.status(500).send('Internal server error');
     }
 });
 
@@ -280,7 +328,7 @@ app.get("/counts", (req, res) => {
  * uses the in-memory models; the session stores model user IDs so we can
  * attach the corresponding user object to the comment.
  */
-app.post('/commentsOfPhoto/:photo_id', (req, res) => {
+app.post('/commentsOfPhoto/:photo_id', async (req, res) => {
     const { photo_id } = req.params;
     const { comment } = req.body || {};
 
@@ -307,12 +355,33 @@ app.post('/commentsOfPhoto/:photo_id', (req, res) => {
             return res.status(400).send('Photo not found.');
         }
 
-        const author = models.userModel(req.session.user_id);
+        // Try to resolve author from in-memory models first, then MongoDB User
+        let author = null;
+        try {
+            author = models.userModel(req.session.user_id);
+        } catch (e) {
+            author = null;
+        }
+
+        if (!author) {
+            try {
+                const mongoUser = await User.findById(req.session.user_id).lean();
+                if (mongoUser) {
+                    author = { _id: String(mongoUser._id), first_name: mongoUser.first_name, last_name: mongoUser.last_name };
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        // Ensure we always include a minimal user object to avoid frontend crashes
+        const userForComment = author || { _id: String(req.session.user_id), first_name: 'Unknown', last_name: '' };
+
         const newComment = {
             _id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             comment: String(comment).trim(),
             date_time: new Date().toISOString(),
-            user: author ? { _id: author._id, first_name: author.first_name, last_name: author.last_name } : undefined,
+            user: { _id: userForComment._id, first_name: userForComment.first_name, last_name: userForComment.last_name },
         };
 
         if (!targetPhoto.comments) targetPhoto.comments = [];
