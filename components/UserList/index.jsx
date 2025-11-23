@@ -4,10 +4,11 @@ import { List, ListItemButton, ListItemText, Paper, Typography } from '@mui/mate
 import './styles.css';
 import { useQuery } from '@tanstack/react-query';
 import { getUsers, getCounts } from '../../lib/api';
-import { useAdvanced } from '../../lib/advancedContext';
+import { useAppStore } from '../../lib/store';
 
 function UserList() {
-  const { enabled } = useAdvanced();
+  const advancedEnabled = useAppStore((s) => s.advancedEnabled);
+  const currentUser = useAppStore((s) => s.currentUser);
   const { pathname } = useLocation();
 
   const {
@@ -17,6 +18,7 @@ function UserList() {
   } = useQuery({
     queryKey: ['users'],
     queryFn: getUsers,
+    enabled: !!currentUser, // only fetch when logged in
   });
 
   const {
@@ -24,7 +26,7 @@ function UserList() {
   } = useQuery({
     queryKey: ['counts'],
     queryFn: getCounts,
-    enabled, // only fetch counts when advanced mode is on
+    enabled: advancedEnabled, // only fetch counts when advanced mode is on
   });
 
   if (isLoading) return <Typography sx={{ p: 2 }}>Loading users…</Typography>;
@@ -56,7 +58,7 @@ function UserList() {
                 primary={(
                   <span className="user-row">
                     <span className="user-name">{name}</span>
-                    {enabled && (
+                    {advancedEnabled && (
                       <span
                         className="bubbles"
                         onClick={(e) => e.stopPropagation()}

@@ -1,4 +1,5 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
+// eslint-disable-next-line import/no-extraneous-dependencies
 import mongoose from "mongoose";
 
 /**
@@ -10,6 +11,9 @@ const userSchema = new mongoose.Schema({
   location: String,
   description: String,
   occupation: String,
+  login_name: { type: String, required: true, unique: true },
+  // Password will be used in a later problem; keep it as plain string for now
+  password: { type: String, required: true },
 });
 
 /**

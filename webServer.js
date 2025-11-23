@@ -7,34 +7,99 @@
  */
 
 import express from "express";
+import session from "express-session";
+import bodyParser from "body-parser";
 import models from "./modelData/photoApp.js";
 
 const app = express();
 const portno = 3001;
 
-// Logging middleware
+// Parse JSON bodies
+app.use(bodyParser.json());
+
+// Simple logging
 app.use((req, _res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+        next();
 });
 
-// Basic CORS (for browser testing)
+// Basic CORS (for browser testing) - allow credentials
 app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET,OPTIONS");
+    const allowed = new Set(["http://localhost:3000", "http://localhost:5173"]);
+    const origin = req.headers.origin;
+    if (allowed.has(origin)) {
+        res.header("Access-Control-Allow-Origin", origin);
+    }
+    res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.header("Access-Control-Allow-Headers", "Content-Type");
+    res.header("Access-Control-Allow-Credentials", "true");
     if (req.method === "OPTIONS") return res.status(200).end();
     next();
 });
 
+// Express-session middleware
+app.use(
+    session({
+        secret: "photoapp-secret",
+        resave: false,
+        saveUninitialized: false,
+    })
+);
+
 // Helper: check if a user exists
 function userExists(id) {
-    try {
-        return !!models.userModel(id);
-    } catch {
-        return false;
-    }
+        try {
+                return !!models.userModel(id);
+        } catch {
+                return false;
+        }
 }
+
+// Paths that don't require login
+const publicPaths = new Set(["/admin/login", "/admin/logout"]);
+
+// Guard: reject all other requests if not logged in
+app.use((req, res, next) => {
+    if (publicPaths.has(req.path)) return next();
+    if (!req.session || !req.session.user_id) {
+        return res.status(401).send("Unauthorized");
+    }
+    return next();
+});
+
+// Admin: login
+app.post('/admin/login', (req, res) => {
+    const { login_name } = req.body;
+    if (!login_name) return res.status(400).send('Missing login_name');
+
+    // In this demo server we use the in-memory models: match against last_name lowercased
+    try {
+        const users = models.userListModel() || [];
+        const found = users.find(u => (u.last_name || '').toLowerCase() === String(login_name).toLowerCase());
+        if (!found) return res.status(400).send('Invalid login_name');
+
+        // store minimal session info
+        req.session.user_id = found._id;
+        req.session.login_name = (found.last_name || '').toLowerCase();
+
+        return res.status(200).json({ _id: found._id, first_name: found.first_name, last_name: found.last_name, login_name: (found.last_name || '').toLowerCase() });
+    } catch (err) {
+        console.error('Login error:', err);
+        return res.status(500).send('Internal server error');
+    }
+});
+
+// Admin: logout
+app.post('/admin/logout', (req, res) => {
+    if (!req.session || !req.session.user_id) return res.status(400).send('Not logged in');
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('Logout error:', err);
+            return res.status(500).send('Internal server error');
+        }
+        return res.status(200).send('Logged out');
+    });
+});
 
 /** GET /user/list � returns list of users with limited info */
 app.get("/user/list", (req, res) => {
