@@ -1,31 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import PropTypes from 'prop-types';
 import { Card, CardContent, Stack, Typography, Link } from '@mui/material';
 import { Link as RouterLink } from 'react-router-dom';
 import './styles.css';
-import { api } from '../../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { getUser } from '../../lib/api';
 
 function fmt(v) { return v ?? '—'; }
 
 function UserDetail({ userId }) {
-  const [user, setUser] = useState(null);
-  const [err, setErr] = useState(null);
+  const {
+    data: user,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => getUser(userId),
+  });
 
-  useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        const res = await api.get(`/user/${userId}`);
-        if (!ignore) setUser(res.data);
-      } catch (e) {
-        setErr('User not found.');
-      }
-    })();
-    return () => { ignore = true; };
-  }, [userId]);
-
-  if (err) return <Typography color="error">{err}</Typography>;
-  if (!user) return <Typography>Loading…</Typography>;
+  if (isLoading) return <Typography>Loading…</Typography>;
+  if (error || !user) return <Typography color="error">User not found.</Typography>;
 
   const fullName = `${user.first_name} ${user.last_name}`;
 
@@ -50,6 +44,7 @@ function UserDetail({ userId }) {
     </Stack>
   );
 }
+
 
 UserDetail.propTypes = {
   userId: PropTypes.string.isRequired,

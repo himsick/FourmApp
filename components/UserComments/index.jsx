@@ -1,9 +1,9 @@
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import { CircularProgress, Typography, Link } from '@mui/material';
 import './styles.css';
-import { api } from '../../lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { getCommentsOfUser, getUser } from '../../lib/api';
 
 function fmtDate(s) {
   try { return new Date(s).toLocaleString(); } catch { return s; }
@@ -11,32 +11,37 @@ function fmtDate(s) {
 
 function UserComments() {
   const { userId } = useParams();
-  const [items, setItems] = useState(null);
-  const [user, setUser] = useState(null);
-  const [err, setErr] = useState(null);
 
-  useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        const [{ data: comments }, { data: userObj }] = await Promise.all([
-          api.get(`/commentsOfUser/${userId}`),
-          api.get(`/user/${userId}`),
-        ]);
-        if (!ignore) {
-          setItems(comments);
-          setUser(userObj);
-        }
-      } catch (e) {
-        setErr(e?.response?.data || 'Failed to load');
-      }
-    })();
-    return () => { ignore = true; };
-  }, [userId]);
+  const {
+    data: items,
+    isLoading: commentsLoading,
+    error: commentsError,
+  } = useQuery({
+    queryKey: ['commentsOfUser', userId],
+    queryFn: () => getCommentsOfUser(userId),
+  });
 
-  if (err) return <Typography color="error">{String(err)}</Typography>;
-  if (!items || !user) return <CircularProgress />;
-  if (items.length === 0) return <Typography>No comments yet.</Typography>;
+  const {
+    data: user,
+    isLoading: userLoading,
+    error: userError,
+  } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => getUser(userId),
+  });
+
+  if (commentsLoading || userLoading) return <CircularProgress />;
+
+  const err = commentsError || userError;
+  if (err) {
+    return (
+      <Typography color="error">
+        {err.message || 'Failed to load'}
+      </Typography>
+    );
+  }
+
+  if (!items || items.length === 0) return <Typography>No comments yet.</Typography>;
 
   const fullName = `${user.first_name} ${user.last_name}`;
 
@@ -49,7 +54,11 @@ function UserComments() {
             <img className="comment-thumb" src={`/images/${it.photo.file_name}`} alt="" />
           </RouterLink>
           <div className="comment-body">
-            <Link component={RouterLink} to={`/photos/${it.photo.user_id}/${it.photo._id}`} className="comment-text">
+            <Link
+              component={RouterLink}
+              to={`/photos/${it.photo.user_id}/${it.photo._id}`}
+              className="comment-text"
+            >
               {it.comment}
             </Link>
             <Typography className="comment-meta">{fmtDate(it.date_time)}</Typography>
@@ -59,5 +68,6 @@ function UserComments() {
     </div>
   );
 }
+
 
 export default UserComments;

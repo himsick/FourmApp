@@ -6,6 +6,9 @@ import {
   BrowserRouter, Route, Routes, useParams,
 } from 'react-router-dom';
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';  // ⬅ add this
+
+
 import './styles/main.css';
 // Import mock setup - Remove this once you have implemented the actual API calls
 //import './lib/mockSetup.js';
@@ -15,6 +18,8 @@ import UserDetail from './components/UserDetail';
 import UserList from './components/UserList';
 import UserPhotos from './components/UserPhotos';
 import UserComments from './components/UserComments';
+
+const queryClient = new QueryClient();
 
 function UserDetailRoute() {
   const { userId } = useParams();
@@ -88,4 +93,8 @@ function PhotoShare() {
 }
 
 const root = ReactDOM.createRoot(document.getElementById('photoshareapp'));
-root.render(<PhotoShare />);
+root.render(
+  <QueryClientProvider client={queryClient}>
+    <PhotoShare />
+  </QueryClientProvider>
+);
